@@ -23,12 +23,12 @@ Each sample consists of:
 
 Two complementary approaches are explored:
 
-### 1) RGB-D Fusion Approach  
+## 1) RGB-D Fusion Approach  
 - **Input:** Concatenate RGB images with point cloud projections (depth maps) to form a multi-channel input (RGB-D).  
 - **Model:** Train a deep neural network (e.g., modified ResNet) on the combined RGB-D input to directly regress 3D bounding box parameters.  
 - **Advantage:** Simple end-to-end learning that integrates color and geometric cues.  
 
-## Model Architecture
+### Model Architecture
 
 - Backbone: ResNet-18 modified to accept 6-channel RGB-D input  
 - Output Heads:  
@@ -37,13 +37,13 @@ Two complementary approaches are explored:
 
 ---
 
-## Training
+### Training
 
 - Data loading integrates RGB and point cloud images into a single tensor input  
 - Ground truth 3D bounding boxes converted from 8 corner points to parameterized format (center, size, yaw bin + residual)  
 - Training performed with batch loading, optimizer setup, and learning rate scheduling
 
-### 2) Instance Segmentation + 3D Clustering Approach (Improved)
+## 2) Instance Segmentation + 3D Clustering Approach (Improved)
 
 - Use a state-of-the-art instance segmentation model (e.g., YOLOv8 segmentation) on RGB images to get per-instance masks.
 - For each mask:
@@ -54,13 +54,13 @@ Two complementary approaches are explored:
     - Creates an oriented bounding box tightly fitting the cluster.
 - This results in more accurate, orientation-aware 3D bounding boxes compared to axis-aligned boxes.
 
-## Benefits of PCA-based 3D Bounding Boxes
+### Benefits of PCA-based 3D Bounding Boxes
 
 - Captures object orientation naturally.
 - Provides tighter fits around objects, improving downstream tasks like tracking or pose estimation.
 - Handles arbitrary object rotations in 3D space.
 
-## Usage
+### Usage
 
 1. Generate instance segmentation masks using YOLOv8 segmentation model on RGB images.
 2. For each mask, cluster points from the corresponding aligned point cloud.
@@ -69,12 +69,10 @@ Two complementary approaches are explored:
 
 ---
 
-## Future Work & Improvements
+### Future Work & Improvements
 
-- Enhance instance segmentation accuracy using state-of-the-art models (Mask R-CNN, etc.)  
+- Enhance instance segmentation accuracy using state-of-the-art models  
 - Refine 3D bounding box fitting using advanced geometric methods beyond convex hull  
-- Incorporate temporal information for video sequences  
-- Implement evaluation metrics such as 3D IoU and average precision for 3D detection
 
 ---
 
@@ -93,15 +91,5 @@ Two complementary approaches are explored:
 ```
 pip install torch torchvision opencv-python albumentations scipy ultralytics scikit-learn matplotlib
 ```
----
-
-## Usage
-
-1. Prepare your dataset with the expected folder structure and file naming.  
-2. Configure training parameters in the training script.  
-3. Run training to produce a model capable of predicting 3D bounding boxes from RGB-D input.  
-4. Use inference scripts to evaluate or visualize predictions.
-
----
 
 
