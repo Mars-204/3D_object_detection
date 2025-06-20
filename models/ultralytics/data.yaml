@@ -1,0 +1,2 @@
+nc: 1
+names: ['object'] # Or any single name you prefer, like 'item', 'blob', etc.

@@ -1,38 +1,58 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+import torch.nn.functional as F
 
 class BBoxModel(nn.Module):
-    def __init__(self):
-        super(BBoxModel, self).__init__()
+    def __init__(self, num_instances=10, yaw_bins=2):
+        super().__init__()
+        self.num_instances = num_instances
+        self.yaw_bins = yaw_bins
 
-        # Pretrained CNN backbone (e.g., ResNet18)
-        self.rgb_backbone = models.resnet18(pretrained=True)
-        self.rgb_backbone.fc = nn.Identity()
+        # Use ResNet-18 and modify input channels
+        resnet = models.resnet18(pretrained=True)
+        resnet.conv1 = nn.Conv2d(6, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        resnet.fc = nn.Identity()
+        self.backbone = resnet
 
-        # Simple MLP for point cloud input
-        self.pc_encoder = nn.Sequential(
-            nn.Linear(3, 64),
+        # Predict xyz, w, h, d → 6 values per instance
+        self.box_reg_head = nn.Sequential(
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(64, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256)
+            nn.Linear(256, num_instances * 6)
         )
 
-        # Final fusion and regression
-        self.fc = nn.Sequential(
-            nn.Linear(512 + 256 + 1, 256),  # RGB + PC + mask avg
+        # Predict yaw bin (classification)
+        self.yaw_cls_head = nn.Sequential(
+            nn.Linear(512, 128),
             nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 7)  # (x, y, z, w, h, d, yaw)
+            nn.Linear(128, num_instances * yaw_bins)
         )
 
-    def forward(self, rgb, pc, mask):
-        b = rgb.shape[0]
-        rgb_feat = self.rgb_backbone(rgb)
-        pc_feat = self.pc_encoder(pc.view(b, -1, 3).mean(dim=1))
-        mask_feat = mask.view(b, -1).float().mean(dim=1, keepdim=True)
+        # Predict yaw residual (regression)
+        self.yaw_res_head = nn.Sequential(
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_instances)
+        )
 
-        x = torch.cat([rgb_feat, pc_feat, mask_feat], dim=1)
-        return self.fc(x)
+    def forward(self, x):
+        # x: [B, 6, 1024, 1024]
+        features = self.backbone(x)  # [B, 512]
+
+        B = x.size(0)
+        N = self.num_instances
+
+        # 6 regression values (x, y, z, w, h, d)
+        bbox_flat = self.box_reg_head(features)  # [B, N*6]
+        bbox = bbox_flat.view(B, N, 6)
+
+        # Yaw bin classification logits
+        yaw_logits_flat = self.yaw_cls_head(features)  # [B, N*yaw_bins]
+        yaw_logits = yaw_logits_flat.view(B, N, self.yaw_bins)
+
+        # Yaw residual regression
+        yaw_residual = self.yaw_res_head(features)  # [B, N]
+
+        return bbox, yaw_logits, yaw_residual
+
