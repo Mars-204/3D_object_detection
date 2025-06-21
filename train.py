@@ -2,12 +2,14 @@ import torch
 from torch.utils.data import DataLoader
 from models.bbox_model import BBoxModel
 from utils.dataloader import BBoxDataset
-from utils.losses import bbox_loss
-from utils.metrics import iou_3d
+from utils.losses import bbox_loss,bbox3d_loss
 import os
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import torch.nn as nn
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+import json
 
 def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,71 +37,79 @@ def train():
 
     model = BBoxModel(num_instances=num_instances).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    train_losses = []
+    val_losses = []
+    best_val_loss = float('inf')
+    best_model_path = 'best_model.pth'
 
     for epoch in range(num_epochs):
         model.train()
-        for rgbpc, rgb, pc, masks, bboxes in train_loader:
+        running_train_loss = 0.0
+        train_bar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training", leave=False)
+
+        for rgbpc, rgb, pc, masks, bboxes in train_bar:
             rgbpc = rgbpc.to(device)
             # masks = masks.to(device)
             bboxes = bboxes.to(device)
 
             optimizer.zero_grad()
-            pred_bboxes = model(rgbpc)
-
-            # # Resize gt masks to mask_size (64x64)
             bbox_pred, yaw_logits, yaw_res = model(rgbpc)
             loss = bbox3d_loss((bbox_pred, yaw_logits, yaw_res), bboxes)
             loss.backward()
             optimizer.step()
 
+            running_train_loss += loss.item() * rgbpc.size(0)
+            avg_loss = running_train_loss / ((train_bar.n + 1) * batch_size)
+            train_bar.set_postfix(loss=avg_loss)
+
+        epoch_train_loss = running_train_loss / len(train_dataset)
+        train_losses.append(epoch_train_loss)
+
         print(f"Epoch {epoch+1}/{num_epochs} Loss: {loss.item():.4f}")
 
-def bbox3d_loss(pred, target, yaw_bins=2):
-    """
-    pred = (bbox: [B, N, 6], yaw_logits: [B, N, yaw_bins], yaw_res: [B, N])
-    target: [B, N, 8] = [x, y, z, w, h, d, yaw_bin, yaw_res]
-    """
-    bbox_pred, yaw_logits, yaw_residual = pred
+        model.eval()
+        running_val_loss = 0.0
 
-    bbox_target = target[:, :, :6]
-    yaw_bin_target = target[:, :, 6].long()       # class index
-    yaw_res_target = target[:, :, 7]
+        val_bar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Validation", leave=False)
+        with torch.no_grad():
+            for rgbpc, rgb, pc, masks, bboxes in val_bar:
+                rgbpc = rgbpc.to(device)
+                bboxes = bboxes.to(device)
 
-    loss_bbox = nn.functional.l1_loss(bbox_pred, bbox_target)
+                bbox_pred, yaw_logits, yaw_res = model(rgbpc)
+                val_loss = bbox3d_loss((bbox_pred, yaw_logits, yaw_res), bboxes)
 
-    # Reshape yaw_logits to [B*N, yaw_bins] for CE
-    B, N = yaw_logits.shape[:2]
-    loss_yaw_cls = nn.functional.cross_entropy(
-        yaw_logits.view(B * N, yaw_bins),
-        yaw_bin_target.view(-1)
-    )
+                running_val_loss += val_loss.item() * rgbpc.size(0)
+                avg_val_loss = running_val_loss / ((val_bar.n + 1) * batch_size)
+                val_bar.set_postfix(val_loss=avg_val_loss)
 
-    # L1 loss on residual
-    loss_yaw_res = nn.functional.l1_loss(yaw_residual, yaw_res_target)
-
-    return loss_bbox + loss_yaw_cls + loss_yaw_res
+        epoch_val_loss = running_val_loss / len(val_dataset)
+        val_losses.append(epoch_val_loss)
+        if epoch_val_loss < best_val_loss:
+            best_val_loss = epoch_val_loss
+            torch.save(model.state_dict(), best_model_path)
+            print(f"✅ Saved best model at epoch {epoch+1} with val loss {best_val_loss:.4f}")
 
 
-def custom_collate_fn(batch):
-    full_tensors = []
-    rgbs = []
-    pcs = []
-    masks = []
-    bboxes = []
+        print(f"Epoch {epoch+1}/{num_epochs} Train Loss: {epoch_train_loss:.4f} Val Loss: {epoch_val_loss:.4f}")
 
-    for full_tensor, rgb, pc, mask, bbox in batch:
-        full_tensors.append(full_tensor)
-        rgbs.append(rgb)
-        pcs.append(pc)
-        masks.append(mask)
-        bboxes.append(bbox)
+    
+     # Plotting loss curves
+    plt.figure(figsize=(8,6))
+    plt.plot(range(1, num_epochs+1), train_losses, label='Train Loss')
+    plt.plot(range(1, num_epochs+1), val_losses, label='Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('training_validation_loss.png')
+    # plt.show()
 
-    full_tensors = torch.stack(full_tensors)  # [B, 6, 1024, 1024]
-    rgbs = torch.stack(rgbs)                  # [B, 3, 1024, 1024]
-    pcs = torch.stack(pcs)                    # [B, 3, 1024, 1024]
-
-    # masks and bboxes are lists because their shape varies per sample
-    return full_tensors, rgbs, pcs, masks, bboxes
+    # Save loss values
+    results = {'train_losses': train_losses, 'val_losses': val_losses}
+    with open('loss_curves.json', 'w') as f:
+        json.dump(results, f)
 
 def pad_or_truncate(tensor, target_len, pad_value=0):
     """
@@ -140,3 +150,6 @@ def custom_collate_fn_fixed_maskes(batch, num_instances=10):
 
 if __name__ == '__main__':
     train()
+    # eval
+    # model.load_state_dict(torch.load('best_model.pth'))
+    # model.eval()

@@ -1,5 +1,6 @@
 import os
 from ultralytics import YOLO
+import cv2
 
 # --- Configuration for Training ---
 # This should match the OUTPUT_YOLO_ROOT from your conversion script

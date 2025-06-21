@@ -5,6 +5,8 @@ from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 import shutil
 
+# Conversion to yolo dataset
+
 # --- Configuration ---
 RAW_DATA_ROOT = r'D:\dl_challenge'  # e.g., 'data/my_items_dataset'
 OUTPUT_YOLO_ROOT = 'yolo_dataset_seg'   # e.g., 'data/yolo_items_segmentation'

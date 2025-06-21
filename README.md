@@ -35,7 +35,6 @@ Two complementary approaches are explored:
   - 3D bounding box regression (center, dimensions, orientation) for multiple object instances  
 - Loss: L1 regression loss on bounding box parameters
 
----
 
 ### Training
 
@@ -66,8 +65,6 @@ Two complementary approaches are explored:
 2. For each mask, cluster points from the corresponding aligned point cloud.
 3. Compute oriented 3D bounding boxes using PCA (as implemented in `get_oriented_3d_bbox`).
 4. Use these 3D bounding boxes for training or evaluation.
-
----
 
 ### Future Work & Improvements
 
