@@ -88,7 +88,7 @@ def train():
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss
             torch.save(model.state_dict(), best_model_path)
-            print(f"✅ Saved best model at epoch {epoch+1} with val loss {best_val_loss:.4f}")
+            print(f" Saved best model at epoch {epoch+1} with val loss {best_val_loss:.4f}")
 
 
         print(f"Epoch {epoch+1}/{num_epochs} Train Loss: {epoch_train_loss:.4f} Val Loss: {epoch_val_loss:.4f}")
@@ -112,11 +112,7 @@ def train():
         json.dump(results, f)
 
 def pad_or_truncate(tensor, target_len, pad_value=0):
-    """
-    Pads or truncates a tensor along the first dimension (instance dimension).
-    tensor: [N, ...]
-    Returns tensor of shape [target_len, ...]
-    """
+    
     n = tensor.shape[0]
     if n == target_len:
         return tensor
@@ -134,7 +130,6 @@ def custom_collate_fn_fixed_maskes(batch, num_instances=10):
     rgbs = torch.stack(rgbs)
     pcs = torch.stack(pcs)
 
-    # Pad/truncate masks and bboxes to fixed length
     masks_padded = []
     bboxes_padded = []
     for m, b in zip(masks, bboxes):

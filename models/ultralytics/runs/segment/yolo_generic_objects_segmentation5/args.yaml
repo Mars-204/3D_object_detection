@@ -13,7 +13,7 @@ cache: false
 device: '0'
 workers: 8
 project: null
-name: yolo_generic_objects_segmentation3
+name: yolo_generic_objects_segmentation5
 exist_ok: false
 pretrained: true
 optimizer: auto
@@ -102,4 +102,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: runs\segment\yolo_generic_objects_segmentation3
+save_dir: runs\segment\yolo_generic_objects_segmentation5
